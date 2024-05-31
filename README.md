@@ -18,5 +18,5 @@ python pybrute.py target https://example.com [ dictionary.txt ]
 ```
 optionally use a dictionary attack by specifying a path to a dictinary text file.
 
-
+the current bad_passwords.txt file is for user "tlb"
 
